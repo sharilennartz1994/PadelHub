@@ -2,11 +2,18 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api'
 
 export class ApiError extends Error {
   status: number
-  constructor(message: string, status: number) {
+  code?: string
+  constructor(message: string, status: number, code?: string) {
     super(message)
     this.name = 'ApiError'
     this.status = status
+    this.code = code
   }
+}
+
+type ApiCallOptions = {
+  /** Abort request after N ms (login / slow networks) */
+  timeoutMs?: number
 }
 
 async function apiCall<T = unknown>(
@@ -14,6 +21,7 @@ async function apiCall<T = unknown>(
   method: 'GET' | 'POST' | 'PUT' | 'DELETE' = 'GET',
   body?: unknown,
   token?: string | null,
+  options?: ApiCallOptions,
 ): Promise<T> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -22,18 +30,33 @@ async function apiCall<T = unknown>(
     headers['Authorization'] = `Bearer ${token}`
   }
 
-  const res = await fetch(`${API_URL}${endpoint}`, {
-    method,
-    headers,
-    body: body ? JSON.stringify(body) : undefined,
-  })
+  const signal =
+    options?.timeoutMs != null && options.timeoutMs > 0
+      ? AbortSignal.timeout(options.timeoutMs)
+      : undefined
+
+  let res: Response
+  try {
+    res = await fetch(`${API_URL}${endpoint}`, {
+      method,
+      headers,
+      body: body ? JSON.stringify(body) : undefined,
+      signal,
+    })
+  } catch (e) {
+    if (e instanceof Error && e.name === 'TimeoutError') {
+      throw new ApiError('Timeout: la richiesta ha impiegato troppo tempo', 408)
+    }
+    throw e
+  }
 
   const json = await res.json().catch(() => null)
 
   if (!res.ok) {
     const message =
       json?.error ?? json?.message ?? `Request failed (${res.status})`
-    throw new ApiError(message, res.status)
+    const code = typeof json?.code === 'string' ? json.code : undefined
+    throw new ApiError(message, res.status, code)
   }
 
   return json?.data ?? json
@@ -55,7 +78,7 @@ export const authService = {
         coach?: { id: string; bio: string; pricePerHour: number; qualifications: string[]; yearsExperience: number }
         player?: { id: string; level: string }
       }
-    }>('/auth/login', 'POST', { email, password })
+    }>('/auth/login', 'POST', { email, password }, undefined, { timeoutMs: 15_000 })
   },
 
   signupPlayer(data: {
@@ -108,9 +131,18 @@ export const authService = {
       surname: string | null
       phone: string | null
       role: 'COACH' | 'PLAYER'
+      emailVerified?: boolean
       coach?: { id: string; bio: string; pricePerHour: number; qualifications: string[]; yearsExperience: number }
       player?: { id: string; level: string }
     }>('/auth/me', 'GET', undefined, token)
+  },
+
+  verifyEmail(token: string) {
+    return apiCall<{ verified: boolean }>('/auth/verify-email', 'POST', { token })
+  },
+
+  resendVerification(authToken: string) {
+    return apiCall<{ sent: boolean }>('/auth/resend-verification', 'POST', undefined, authToken)
   },
 }
 
@@ -184,7 +216,10 @@ export const bookingService = {
       duration: number
       type: 'SINGLE' | 'GROUP'
       price: number
+      locationId?: string
       locationName?: string
+      latitude?: number
+      longitude?: number
       notes?: string
     },
     token: string,
@@ -192,13 +227,15 @@ export const bookingService = {
     return apiCall<Record<string, unknown>>('/bookings', 'POST', data, token)
   },
 
-  getPlayerBookings(playerId: string, token: string) {
-    return apiCall<unknown[]>(`/bookings/player/${playerId}`, 'GET', undefined, token)
+  /** Prenotazioni del player autenticato (ID dal JWT, non dal path) */
+  getPlayerBookings(token: string) {
+    return apiCall<unknown[]>(`/bookings/player/me`, 'GET', undefined, token)
   },
 
-  getCoachBookings(coachId: string, token: string, status?: string) {
+  /** Prenotazioni del coach autenticato (ID dal JWT, non dal path) */
+  getCoachBookings(token: string, status?: string) {
     const qs = status ? `?status=${status}` : ''
-    return apiCall<unknown[]>(`/bookings/coach/${coachId}${qs}`, 'GET', undefined, token)
+    return apiCall<unknown[]>(`/bookings/coach/me${qs}`, 'GET', undefined, token)
   },
 
   getBookingDetail(bookingId: string, token: string) {

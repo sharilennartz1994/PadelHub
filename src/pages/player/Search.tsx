@@ -19,9 +19,17 @@ interface CoachResult {
   yearsExperience: number
   offersGroupLessons?: boolean
   groupPricePerPerson?: number
+  trainingOffers?: { kind: string; priceCents: number }[]
   locations: { id: string; name: string; address: string }[]
   _avg?: { rating: number }
   _count?: { reviews: number }
+}
+
+function displayPriceCents(c: CoachResult): number {
+  if (c.trainingOffers && c.trainingOffers.length > 0) {
+    return Math.min(...c.trainingOffers.map((t) => t.priceCents))
+  }
+  return c.pricePerHour
 }
 
 export function PlayerSearch() {
@@ -151,7 +159,7 @@ export function PlayerSearch() {
                         )}
                       </div>
                       <div className="text-right">
-                        <p className="font-headline text-xl font-bold text-primary">€{coach.pricePerHour}</p>
+                        <p className="font-headline text-xl font-bold text-primary">€{(displayPriceCents(coach) / 100).toFixed(0)}</p>
                         <p className="text-xs text-on-surface-variant">{t('search.perHour', language)}</p>
                       </div>
                     </div>

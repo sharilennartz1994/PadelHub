@@ -61,20 +61,19 @@ export function CoachBookings() {
   const [isLoadingDetail, setIsLoadingDetail] = useState(false)
 
   const token = getToken()
-  const coachId = user?.coachId
 
   const fetchBookings = useCallback(async () => {
-    if (!coachId || !token) return
+    if (!token || user?.role !== 'COACH') return
     setIsLoading(true)
     try {
-      const data = await bookingService.getCoachBookings(coachId, token)
+      const data = await bookingService.getCoachBookings(token)
       setBookings(data as BookingItem[])
     } catch (err) {
       console.error(err)
     } finally {
       setIsLoading(false)
     }
-  }, [coachId, token])
+  }, [token, user?.role])
 
   useEffect(() => {
     fetchBookings()

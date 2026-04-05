@@ -10,6 +10,7 @@ import { Avatar } from '../../components/ui/Avatar'
 import { Button } from '../../components/ui/Button'
 import { Spinner } from '../../components/ui/Spinner'
 import { BookingFlow } from '../BookingFlow'
+import type { TrainingOfferRow } from '../BookingFlow'
 
 type Tab = 'info' | 'availability' | 'reviews'
 
@@ -22,8 +23,9 @@ interface CoachData {
   yearsExperience: number
   offersGroupLessons?: boolean
   groupPricePerPerson?: number
+  trainingOffers?: TrainingOfferRow[]
   profileImage?: string
-  locations: { id: string; name: string; address: string }[]
+  locations: { id: string; name: string; address: string; latitude?: number; longitude?: number }[]
   availabilities?: { id: string; dayOfWeek: number; startTime: string; endTime: string }[]
   _avg?: { rating: number }
   _count?: { reviews: number }
@@ -103,6 +105,10 @@ export function CoachDetail() {
 
   const name = `${coach.user.name} ${coach.user.surname ?? ''}`.trim()
   const initials = `${coach.user.name[0]}${(coach.user.surname?.[0] ?? '').toUpperCase()}`
+  const singleCents =
+    coach.trainingOffers?.find((t) => t.kind === 'SINGLE')?.priceCents ?? coach.pricePerHour
+  const groupCents =
+    coach.trainingOffers?.find((t) => t.kind === 'GROUP')?.priceCents ?? coach.groupPricePerPerson
   const rating = coach._avg?.rating ?? 0
   const reviewCount = coach._count?.reviews ?? 0
   const selectedDayOfWeek = weekDates[selectedDate].getDay()
@@ -256,18 +262,18 @@ export function CoachDetail() {
               <div className="sticky top-24">
                 <Card>
                   <div className="mb-4 text-center">
-                    <p className="font-headline text-4xl font-black text-primary">€{coach.pricePerHour}</p>
+                    <p className="font-headline text-4xl font-black text-primary">€{(singleCents / 100).toFixed(0)}</p>
                     <p className="text-sm text-on-surface-variant">{t('search.perHour', language)}</p>
                   </div>
                   <div className="mb-6 space-y-3">
                     <div className="flex items-center justify-between rounded-lg bg-surface-container-low px-4 py-2.5 text-sm">
                       <span className="text-on-surface-variant">{t('booking.single', language)}</span>
-                      <span className="font-bold text-on-surface">€{coach.pricePerHour}</span>
+                      <span className="font-bold text-on-surface">€{(singleCents / 100).toFixed(0)}</span>
                     </div>
-                    {coach.groupPricePerPerson && (
+                    {groupCents != null && groupCents > 0 && (
                       <div className="flex items-center justify-between rounded-lg bg-surface-container-low px-4 py-2.5 text-sm">
                         <span className="text-on-surface-variant">{t('booking.group', language)}</span>
-                        <span className="font-bold text-on-surface">€{coach.groupPricePerPerson}</span>
+                        <span className="font-bold text-on-surface">€{((groupCents ?? 0) / 100).toFixed(0)}</span>
                       </div>
                     )}
                   </div>
@@ -290,10 +296,11 @@ export function CoachDetail() {
           coachName={name}
           coachInitials={initials}
           coachQualification={coach.qualifications?.[0] ?? ''}
-          pricePerHour={coach.pricePerHour}
-          groupPrice={coach.groupPricePerPerson}
+          pricePerHourCents={coach.pricePerHour}
+          groupPriceCents={coach.groupPricePerPerson}
           offersGroup={coach.offersGroupLessons ?? false}
-          locationName={coach.locations[0]?.name ?? ''}
+          trainingOffers={coach.trainingOffers}
+          locations={coach.locations}
           selectedDate={weekDates[selectedDate].toISOString().split('T')[0]}
           selectedTime={selectedTime ?? '10:00'}
           onClose={() => setShowBooking(false)}

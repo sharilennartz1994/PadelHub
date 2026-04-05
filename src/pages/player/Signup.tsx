@@ -15,6 +15,7 @@ interface PlayerSignupForm {
   email: string
   phone: string
   password: string
+  confirmPassword: string
   level: string
 }
 
@@ -35,7 +36,7 @@ export function PlayerSignup() {
     handleSubmit,
     watch,
     formState: { errors },
-  } = useForm<PlayerSignupForm>({ defaultValues: { level: 'BEGINNER' } })
+  } = useForm<PlayerSignupForm>({ defaultValues: { level: 'BEGINNER', confirmPassword: '' } })
 
   const selectedLevel = watch('level')
 
@@ -124,6 +125,19 @@ export function PlayerSignup() {
             {...register('password', {
               required: 'Password obbligatoria',
               minLength: { value: 6, message: 'Minimo 6 caratteri' },
+            })}
+          />
+
+          <Input
+            label={language === 'it' ? 'Conferma password' : 'Confirm password'}
+            type="password"
+            placeholder="••••••••"
+            icon={<Lock className="h-5 w-5" />}
+            error={errors.confirmPassword?.message}
+            {...register('confirmPassword', {
+              required: language === 'it' ? 'Conferma la password' : 'Confirm your password',
+              validate: (v, f) =>
+                v === f.password || (language === 'it' ? 'Le password non coincidono' : 'Passwords do not match'),
             })}
           />
 

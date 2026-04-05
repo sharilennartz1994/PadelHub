@@ -5,6 +5,7 @@ import { Mail, Lock } from 'lucide-react'
 import { useAuthStore } from '../../stores/authStore'
 import { useLanguageStore } from '../../stores/languageStore'
 import { t } from '../../utils/i18n'
+import { mapApiErrorMessage } from '../../utils/apiErrors'
 import { Card } from '../../components/ui/Card'
 import { Input } from '../../components/ui/Input'
 import { Button } from '../../components/ui/Button'
@@ -36,7 +37,7 @@ export function Login() {
         navigate('/search')
       }
     } catch (err) {
-      setApiError(err instanceof Error ? err.message : 'Login failed')
+      setApiError(mapApiErrorMessage(err, language))
     }
   }
 

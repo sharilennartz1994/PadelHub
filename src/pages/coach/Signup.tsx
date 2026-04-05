@@ -14,6 +14,7 @@ interface CoachSignupForm {
   email: string
   phone: string
   password: string
+  confirmPassword: string
   bio: string
   qualifications: string
   yearsExperience: number
@@ -38,12 +39,12 @@ export function CoachSignup() {
     trigger,
     formState: { errors },
   } = useForm<CoachSignupForm>({
-    defaultValues: { lessonDuration: 60, hourlyRate: 40, groupLessons: false },
+    defaultValues: { lessonDuration: 60, hourlyRate: 40, groupLessons: false, confirmPassword: '' },
   })
 
   const nextStep = async () => {
     const fieldsToValidate: Record<number, (keyof CoachSignupForm)[]> = {
-      1: ['firstName', 'lastName', 'email', 'phone', 'password'],
+      1: ['firstName', 'lastName', 'email', 'phone', 'password', 'confirmPassword'],
       2: ['qualifications', 'yearsExperience'],
       3: ['location'],
     }
@@ -64,7 +65,7 @@ export function CoachSignup() {
         phone: data.phone || undefined,
         qualifications: data.qualifications.split(',').map((q) => q.trim()).filter(Boolean),
         yearsExperience: data.yearsExperience,
-        pricePerHour: data.hourlyRate,
+        pricePerHour: Math.round(data.hourlyRate * 100),
       })
       navigate('/coach/dashboard')
     } catch (err) {
@@ -125,6 +126,7 @@ export function CoachSignup() {
                 <Input label={t('auth.email', language)} type="email" placeholder="coach@example.com" icon={<Mail className="h-5 w-5" />} error={errors.email?.message} {...register('email', { required: 'Email obbligatoria', pattern: { value: /^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i, message: 'Email non valida' } })} />
                 <Input label={t('player.signup.phone', language)} type="tel" placeholder="+39 333 123 4567" icon={<Phone className="h-5 w-5" />} error={errors.phone?.message} {...register('phone', { required: 'Obbligatorio' })} />
                 <Input label={t('auth.password', language)} type="password" placeholder="••••••••" icon={<Lock className="h-5 w-5" />} error={errors.password?.message} {...register('password', { required: 'Password obbligatoria', minLength: { value: 6, message: 'Minimo 6 caratteri' } })} />
+                <Input label={language === 'it' ? 'Conferma password' : 'Confirm password'} type="password" placeholder="••••••••" icon={<Lock className="h-5 w-5" />} error={errors.confirmPassword?.message} {...register('confirmPassword', { required: language === 'it' ? 'Conferma la password' : 'Confirm password', validate: (v, f) => v === f.password || (language === 'it' ? 'Le password non coincidono' : 'Passwords do not match') })} />
               </>
             )}
 

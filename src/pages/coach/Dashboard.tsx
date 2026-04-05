@@ -80,17 +80,16 @@ export function CoachDashboard() {
 
   const weekStart = getWeekStart(weekOffset)
   const token = getToken()
-  const coachId = user?.coachId
 
   useEffect(() => {
-    if (!coachId || !token) return
+    if (!token || user?.role !== 'COACH') return
     setIsLoading(true)
     bookingService
-      .getCoachBookings(coachId, token)
+      .getCoachBookings(token)
       .then((data) => setBookings(data as BookingItem[]))
       .catch((err) => console.error('Failed to fetch bookings:', err))
       .finally(() => setIsLoading(false))
-  }, [coachId, token])
+  }, [token, user?.role])
 
   const calendarEvents = bookingsToCalendarEvents(bookings, weekStart)
   const totalBookings = bookings.length

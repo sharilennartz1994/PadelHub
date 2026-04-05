@@ -51,20 +51,19 @@ export function PlayerBookings() {
   const [isLoading, setIsLoading] = useState(true)
 
   const token = getToken()
-  const playerId = user?.playerId ?? user?.id
 
   const fetchBookings = useCallback(async () => {
-    if (!playerId || !token) return
+    if (!token || user?.role !== 'PLAYER') return
     setIsLoading(true)
     try {
-      const data = await bookingService.getPlayerBookings(playerId, token)
+      const data = await bookingService.getPlayerBookings(token)
       setBookings(data as BookingItem[])
     } catch (err) {
       console.error(err)
     } finally {
       setIsLoading(false)
     }
-  }, [playerId, token])
+  }, [token, user?.role])
 
   useEffect(() => {
     fetchBookings()

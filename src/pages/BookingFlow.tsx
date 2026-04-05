@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useState, useEffect, useMemo } from 'react'
+import { mapApiErrorMessage } from '../utils/apiErrors'
 import { useNavigate } from 'react-router-dom'
 import { CheckCircle, Clock, Calendar, MapPin, Users, User, CreditCard, Banknote, Copy, Check } from 'lucide-react'
 import { useLanguageStore } from '../stores/languageStore'
@@ -10,18 +11,41 @@ import { Button } from '../components/ui/Button'
 import { Avatar } from '../components/ui/Avatar'
 import { Badge } from '../components/ui/Badge'
 
+export interface BookingLocation {
+  id: string
+  name: string
+  address: string
+  latitude?: number
+  longitude?: number
+}
+
+export interface TrainingOfferRow {
+  kind: 'SINGLE' | 'GROUP'
+  priceCents: number
+}
+
 interface BookingFlowProps {
   coachId: string
   coachName: string
   coachInitials: string
   coachQualification: string
-  pricePerHour: number
-  groupPrice?: number
+  /** Prezzo/ora in centesimi (come da API) */
+  pricePerHourCents: number
+  groupPriceCents?: number | null
   offersGroup: boolean
-  locationName: string
+  /** Se presente, ha priorità sui campi legacy sopra */
+  trainingOffers?: TrainingOfferRow[]
+  locations: BookingLocation[]
   selectedDate: string
   selectedTime: string
   onClose: () => void
+}
+
+function euroFromCents(cents: number) {
+  return (cents / 100).toLocaleString('it-IT', {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  })
 }
 
 type LessonType = 'SINGLE' | 'GROUP'
@@ -31,10 +55,11 @@ export function BookingFlow({
   coachName,
   coachInitials,
   coachQualification,
-  pricePerHour,
-  groupPrice,
+  pricePerHourCents,
+  groupPriceCents,
   offersGroup,
-  locationName,
+  trainingOffers,
+  locations,
   selectedDate,
   selectedTime,
   onClose,
@@ -50,17 +75,70 @@ export function BookingFlow({
   const [bookingCode, setBookingCode] = useState('')
   const [apiError, setApiError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
+  const [selectedLocationId, setSelectedLocationId] = useState('')
 
-  const price = lessonType === 'GROUP' && groupPrice ? groupPrice : pricePerHour
-  const totalPrice = Math.round(price * (duration / 60))
+  useEffect(() => {
+    if (locations.length > 0 && !selectedLocationId) {
+      setSelectedLocationId(locations[0].id)
+    }
+  }, [locations, selectedLocationId])
+
+  const selectedLocation = useMemo(
+    () => locations.find((l) => l.id === selectedLocationId),
+    [locations, selectedLocationId],
+  )
+
+  const singleCents = useMemo(() => {
+    const o = trainingOffers?.find((x) => x.kind === 'SINGLE')
+    return o?.priceCents ?? pricePerHourCents
+  }, [trainingOffers, pricePerHourCents])
+
+  const groupOfferCents = useMemo(() => {
+    const o = trainingOffers?.find((x) => x.kind === 'GROUP')
+    return o?.priceCents ?? groupPriceCents ?? null
+  }, [trainingOffers, groupPriceCents])
+
+  const canBookGroup = useMemo(() => {
+    if (trainingOffers?.some((x) => x.kind === 'GROUP')) return true
+    return offersGroup && groupOfferCents != null && groupOfferCents > 0
+  }, [trainingOffers, offersGroup, groupOfferCents])
+
+  useEffect(() => {
+    if (lessonType === 'GROUP' && !canBookGroup) setLessonType('SINGLE')
+  }, [lessonType, canBookGroup])
+
+  const rateCents =
+    lessonType === 'GROUP' && groupOfferCents ? groupOfferCents : singleCents
+  const totalPriceCents = Math.round(rateCents * (duration / 60))
 
   const nextStep = () => setStep((s) => Math.min(s + 1, 4))
   const prevStep = () => setStep((s) => Math.max(s - 1, 1))
+
+  const goNextFromStep1 = () => {
+    if (locations.length === 0 || !selectedLocationId) {
+      setApiError(
+        language === 'it'
+          ? 'Seleziona un campo / club dove svolgere la lezione.'
+          : 'Please select a court / location for the lesson.',
+      )
+      return
+    }
+    setApiError(null)
+    nextStep()
+  }
 
   const handleConfirm = async () => {
     const token = getToken()
     if (!token || !user) {
       navigate('/login')
+      return
+    }
+    if (!user.playerId) {
+      setApiError(
+        language === 'it'
+          ? 'Profilo giocatore non trovato. Esci e accedi di nuovo.'
+          : 'Player profile not found. Please log in again.',
+      )
       return
     }
     setIsSubmitting(true)
@@ -70,19 +148,24 @@ export function BookingFlow({
       const result = await bookingService.createBooking(
         {
           coachId,
-          playerId: user.playerId ?? user.id,
+          playerId: user.playerId,
           lessonDate: lessonDateTime,
           duration,
           type: lessonType,
-          price: totalPrice,
-          locationName,
+          price: totalPriceCents,
+          locationId: selectedLocationId,
+          locationName: selectedLocation?.name ?? '',
+          latitude: selectedLocation?.latitude,
+          longitude: selectedLocation?.longitude,
         },
         token,
       )
       setBookingCode((result as Record<string, unknown>).bookingNumber as string ?? (result as Record<string, unknown>).id as string ?? 'OK')
       nextStep()
     } catch (err) {
-      setApiError(err instanceof Error ? err.message : 'Booking failed')
+      setApiError(
+        mapApiErrorMessage(err, language === 'it' ? 'it' : 'en'),
+      )
     } finally {
       setIsSubmitting(false)
     }
@@ -127,6 +210,30 @@ export function BookingFlow({
       {step === 1 && (
         <div className="space-y-6">
           <h3 className="font-headline text-xl font-bold">{t('booking.details', language)}</h3>
+          {locations.length > 0 ? (
+            <div>
+              <label className="mb-2 block text-xs font-bold uppercase tracking-widest text-on-surface-variant">
+                {language === 'it' ? 'Campo / Club' : 'Court / Club'}
+              </label>
+              <select
+                value={selectedLocationId}
+                onChange={(e) => setSelectedLocationId(e.target.value)}
+                className="w-full rounded-xl border border-surface-container-high bg-surface-container-low px-4 py-3 text-on-surface focus:outline-none focus:ring-2 focus:ring-primary/20"
+              >
+                {locations.map((loc) => (
+                  <option key={loc.id} value={loc.id}>
+                    {loc.name} — {loc.address}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : (
+            <p className="rounded-xl border border-warning/30 bg-warning/5 px-4 py-3 text-sm text-on-surface">
+              {language === 'it'
+                ? 'Questo coach non ha ancora indicato un campo. Contatta il coach.'
+                : 'This coach has no locations yet. Please contact the coach.'}
+            </p>
+          )}
           <div className="flex items-center gap-3 rounded-xl bg-surface-container-low p-4">
             <Calendar className="h-5 w-5 text-primary" /><span className="font-medium">{selectedDate}</span>
             <Clock className="ml-4 h-5 w-5 text-primary" /><span className="font-medium">{selectedTime}</span>
@@ -146,21 +253,29 @@ export function BookingFlow({
                 <User className="h-5 w-5 text-primary" />
                 <div className="text-left">
                   <p className="font-medium text-on-surface">{t('booking.single', language)}</p>
-                  <p className="text-xs text-on-surface-variant">€{pricePerHour}/h</p>
+                  <p className="text-xs text-on-surface-variant">€{euroFromCents(singleCents)}/h</p>
                 </div>
               </button>
-              <button onClick={() => setLessonType('GROUP')} disabled={!offersGroup} className={`flex items-center gap-3 rounded-xl border-2 p-4 transition-all ${lessonType === 'GROUP' ? 'border-primary bg-primary/5' : 'border-surface-container-high hover:border-primary/30'} disabled:opacity-40 disabled:cursor-not-allowed`}>
+              <button onClick={() => setLessonType('GROUP')} disabled={!canBookGroup} className={`flex items-center gap-3 rounded-xl border-2 p-4 transition-all ${lessonType === 'GROUP' ? 'border-primary bg-primary/5' : 'border-surface-container-high hover:border-primary/30'} disabled:opacity-40 disabled:cursor-not-allowed`}>
                 <Users className="h-5 w-5 text-secondary" />
                 <div className="text-left">
                   <p className="font-medium text-on-surface">{t('booking.group', language)}</p>
-                  <p className="text-xs text-on-surface-variant">{groupPrice ? `€${groupPrice}/h` : 'N/A'}</p>
+                  <p className="text-xs text-on-surface-variant">
+                    {groupOfferCents ? `€${euroFromCents(groupOfferCents)}/h` : 'N/A'}
+                  </p>
                 </div>
               </button>
             </div>
           </div>
           <div className="flex gap-3 pt-2">
             <Button variant="outline" className="flex-1" onClick={onClose}>{t('booking.cancel', language)}</Button>
-            <Button className="flex-1" onClick={nextStep}>{t('booking.continue', language)}</Button>
+            <Button
+              className="flex-1"
+              disabled={locations.length === 0}
+              onClick={goNextFromStep1}
+            >
+              {t('booking.continue', language)}
+            </Button>
           </div>
         </div>
       )}
@@ -174,13 +289,14 @@ export function BookingFlow({
               <p className="font-headline font-bold">{coachName}</p>
               <p className="text-sm text-on-surface-variant">{coachQualification}</p>
             </div>
-            <div className="rounded-xl p-3 kinetic-gradient text-center text-white"><p className="text-2xl font-black">€{totalPrice}</p></div>
+            <div className="rounded-xl p-3 kinetic-gradient text-center text-white"><p className="text-2xl font-black">€{euroFromCents(totalPriceCents)}</p></div>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="rounded-xl bg-surface-container-low p-4"><Calendar className="mb-2 h-5 w-5 text-primary" /><p className="text-xs text-on-surface-variant">{language === 'it' ? 'Data' : 'Date'}</p><p className="font-medium">{selectedDate}</p></div>
             <div className="rounded-xl bg-surface-container-low p-4"><Clock className="mb-2 h-5 w-5 text-primary" /><p className="text-xs text-on-surface-variant">{language === 'it' ? 'Orario' : 'Time'}</p><p className="font-medium">{selectedTime}</p></div>
             <div className="rounded-xl bg-surface-container-low p-4"><MapPin className="mb-2 h-5 w-5 text-primary" /><p className="text-xs text-on-surface-variant">{t('booking.duration', language)}</p><p className="font-medium">{duration} min</p></div>
             <div className="rounded-xl bg-surface-container-low p-4"><Users className="mb-2 h-5 w-5 text-primary" /><p className="text-xs text-on-surface-variant">{t('booking.type', language)}</p><p className="font-medium">{lessonType === 'SINGLE' ? t('booking.single', language) : t('booking.group', language)}</p></div>
+            <div className="col-span-2 rounded-xl bg-surface-container-low p-4"><MapPin className="mb-2 h-5 w-5 text-primary" /><p className="text-xs text-on-surface-variant">{language === 'it' ? 'Luogo' : 'Location'}</p><p className="font-medium">{selectedLocation?.name ?? '—'}</p></div>
           </div>
           <div className="flex gap-3 pt-2">
             <Button variant="outline" className="flex-1" onClick={prevStep}>{t('common.back', language)}</Button>
@@ -233,7 +349,7 @@ export function BookingFlow({
               <div><p className="text-xs text-on-surface-variant">Coach</p><p className="font-bold">{coachName}</p></div>
               <div><p className="text-xs text-on-surface-variant">{language === 'it' ? 'Data' : 'Date'}</p><p className="font-bold">{selectedDate}</p></div>
               <div><p className="text-xs text-on-surface-variant">{language === 'it' ? 'Orario' : 'Time'}</p><p className="font-bold">{selectedTime}</p></div>
-              <div><p className="text-xs text-on-surface-variant">{language === 'it' ? 'Prezzo' : 'Price'}</p><p className="font-bold text-primary">€{totalPrice}</p></div>
+              <div><p className="text-xs text-on-surface-variant">{language === 'it' ? 'Prezzo' : 'Price'}</p><p className="font-bold text-primary">€{euroFromCents(totalPriceCents)}</p></div>
             </div>
             <div className="mt-4 flex items-center justify-between rounded-lg bg-surface-container-lowest p-3">
               <div><p className="text-xs text-on-surface-variant">{t('booking.code', language)}</p><p className="font-mono font-bold text-primary">{bookingCode}</p></div>

@@ -10,6 +10,7 @@ export interface AuthUser {
   role: 'COACH' | 'PLAYER'
   coachId?: string
   playerId?: string
+  emailVerified?: boolean
 }
 
 interface AuthState {
@@ -55,6 +56,7 @@ function parseUser(raw: Record<string, unknown>): AuthUser {
     role: raw.role as 'COACH' | 'PLAYER',
     coachId: (raw.coach as Record<string, unknown>)?.id as string | undefined,
     playerId: (raw.player as Record<string, unknown>)?.id as string | undefined,
+    emailVerified: raw.emailVerified === true,
   }
 }
 

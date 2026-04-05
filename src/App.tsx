@@ -6,6 +6,7 @@ import { ProtectedRoute } from './components/shared/ProtectedRoute'
 import { ToastContainer } from './components/shared/ToastContainer'
 import { Landing } from './pages/Landing'
 import { Login } from './pages/auth/Login'
+import { VerifyEmail } from './pages/auth/VerifyEmail'
 import { PlayerSignup } from './pages/player/Signup'
 import { CoachSignup } from './pages/coach/Signup'
 import { CoachDashboard } from './pages/coach/Dashboard'
@@ -40,6 +41,7 @@ function AppLayout() {
         {/* Public */}
         <Route path="/" element={<Landing />} />
         <Route path="/login" element={<Login />} />
+        <Route path="/verify-email" element={<VerifyEmail />} />
         <Route path="/player/signup" element={<PlayerSignup />} />
         <Route path="/coach/signup" element={<CoachSignup />} />
         <Route path="/search" element={<PlayerSearch />} />
